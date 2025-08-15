@@ -100,21 +100,24 @@
   const W = canvas.width, H = canvas.height;
   const center = { x: W/2, y: H/2 };
   const RING_RADIUS = Math.min(W,H)*0.44;    // inner playable ring
-  const BEY_RADIUS = Math.min(W,H)*0.03;     // size of bey
-  const EDGE_OUT = RING_RADIUS + BEY_RADIUS*0.2;
+  const BEY_RADIUS = Math.min(W,H)*0.04;     // bigger beys for more contact
+  const EDGE_OUT = RING_RADIUS + BEY_RADIUS*0.6; // ring-out threshold
 
-  // Physics constants
-  const BASE_FRICTION = 0.004;  // energy drain per frame
-  const WALL_BOUNCE = 0.9;
-  const COLLISION_DAMP = 0.96;
+  // Physics constants (tuned)
+  const BASE_FRICTION = 0.0035;    // base drain per frame
+  const WALL_BOUNCE = 0.92;        // speed kept after bounce
+  const COLLISION_DAMP = 0.94;     // speed kept after a hit
+  const CENTER_PULL = 0.006;       // gentle pull to center so they re-engage
+  const JITTER = 0.015;            // tiny random wobble to avoid stale movement
 
   let raf = null;
   let roundOver = false;
   let targetWins = 3;
   let scores = { p1: 0, p2: 0 };
+  const sparks = []; // collision particles
 
   class Bey {
-    constructor(color, startX, startY, aimTowardsCenter = true){
+    constructor(color, startX, startY){
       this.color = color;
       this.x = startX;
       this.y = startY;
@@ -122,44 +125,67 @@
       this.vy = 0;
       this.energy = 0;
       this.alive = true;
-      this.aimToCenter = aimTowardsCenter;
     }
     launch(power){
-      // Convert 20–100 power into velocity & energy
       const p = Math.max(20, Math.min(100, power));
-      this.energy = p / 100; // 0.2–1.0
-      const speed = 3 * this.energy; // velocity magnitude
+      this.energy = p / 100;              // 0.2–1.0
+      const speed = 3.2 * this.energy;    // initial speed
 
-      // Direction: mostly towards center with slight randomness
+      // Aim roughly to center with a bit of angle variance
       let angle = Math.atan2(center.y - this.y, center.x - this.x);
-      angle += (Math.random() - 0.5) * 0.6; // ± ~34°
+      angle += (Math.random() - 0.5) * 0.45; // ± ~26°
       this.vx = Math.cos(angle) * speed;
       this.vy = Math.sin(angle) * speed;
     }
     update(){
       if (!this.alive) return;
 
+      // Center pull (keeps tops circulating and colliding)
+      const dxc = center.x - this.x, dyc = center.y - this.y;
+      const distC = Math.hypot(dxc, dyc) || 1;
+      this.vx += (dxc / distC) * CENTER_PULL * this.energy;
+      this.vy += (dyc / distC) * CENTER_PULL * this.energy;
+
+      // Small random jitter (prevents perfect parallel orbits)
+      this.vx += (Math.random() - 0.5) * JITTER * this.energy;
+      this.vy += (Math.random() - 0.5) * JITTER * this.energy;
+
       // Move
       this.x += this.vx;
       this.y += this.vy;
+
+      // Wall bounce inside ring; small energy loss
+      const d = Math.hypot(this.x - center.x, this.y - center.y);
+      if (d > RING_RADIUS - BEY_RADIUS) {
+        // normal
+        const nx = (this.x - center.x) / d, ny = (this.y - center.y) / d;
+        // reflect velocity along normal
+        const vn = this.vx*nx + this.vy*ny;
+        this.vx -= 2 * vn * nx;
+        this.vy -= 2 * vn * ny;
+        this.vx *= WALL_BOUNCE; this.vy *= WALL_BOUNCE;
+        this.energy = Math.max(0, this.energy - 0.01);
+        // nudge just inside wall
+        const pushIn = (RING_RADIUS - BEY_RADIUS) - d - 0.5;
+        this.x += -nx * (pushIn);
+        this.y += -ny * (pushIn);
+      }
 
       // Friction drains speed & energy
       const speed = Math.hypot(this.vx, this.vy);
       const drain = BASE_FRICTION + speed*0.002;
       this.energy = Math.max(0, this.energy - drain);
       if (speed > 0){
-        const slow = Math.max(0, speed - drain*2);
+        const slow = Math.max(0, speed - drain*1.6);
         const k = slow / speed;
         this.vx *= k; this.vy *= k;
       }
 
-      // Out of ring?
-      const d = dist(this.x, this.y, center.x, center.y);
-      if (d > EDGE_OUT) {
-        this.alive = false;
-      }
+      // Ring-out (beyond soft wall zone)
+      if (d > EDGE_OUT) this.alive = false;
     }
     draw(){
+      // body
       ctx.beginPath();
       ctx.arc(this.x, this.y, BEY_RADIUS, 0, Math.PI*2);
       ctx.fillStyle = this.color;
@@ -168,18 +194,18 @@
       ctx.strokeStyle = "rgba(0,0,0,.15)";
       ctx.stroke();
 
-      // Energy ring
+      // energy arc
       ctx.beginPath();
-      ctx.arc(this.x, this.y, BEY_RADIUS+4, 0, Math.PI*2*this.energy);
+      ctx.arc(this.x, this.y, BEY_RADIUS+5, -Math.PI/2, -Math.PI/2 + Math.PI*2*this.energy);
       ctx.strokeStyle = this.color;
       ctx.lineWidth = 3;
       ctx.stroke();
     }
   }
 
-  // Players
-  let p1 = new Bey("#2b7bff", center.x - RING_RADIUS*0.7, center.y);
-  let p2 = new Bey("#ff3b3b", center.x + RING_RADIUS*0.7, center.y);
+  // Players (spawn closer so they meet fast)
+  let p1 = new Bey("#2b7bff", center.x - RING_RADIUS*0.6, center.y);
+  let p2 = new Bey("#ff3b3b", center.x + RING_RADIUS*0.6, center.y);
 
   // Helpers
   function dist(x1,y1,x2,y2){ return Math.hypot(x2-x1, y2-y1); }
@@ -187,10 +213,8 @@
   function resetRound(){
     roundOver = false;
     cancelAnimationFrame(raf);
-    // Fresh beys
-    p1 = new Bey("#2b7bff", center.x - RING_RADIUS*0.7, center.y);
-    p2 = new Bey("#ff3b3b", center.x + RING_RADIUS*0.7, center.y);
-    // Enable launching
+    p1 = new Bey("#2b7bff", center.x - RING_RADIUS*0.6, center.y + (Math.random()-0.5)*40);
+    p2 = new Bey("#ff3b3b", center.x + RING_RADIUS*0.6, center.y + (Math.random()-0.5)*40);
     setLaunchEnabled(true);
     drawOnce();
   }
@@ -203,35 +227,58 @@
   }
 
   function handleCollision(a, b){
-    // Simple elastic-ish collision with damping
     const dx = b.x - a.x;
     const dy = b.y - a.y;
     const d = Math.hypot(dx, dy);
-    if (d === 0) return;
+    const minDist = BEY_RADIUS*2.1; // slightly larger than touching for reliable hits
+    if (d === 0 || d > minDist) return;
 
-    // Only collide if overlapping
-    const minDist = BEY_RADIUS*2;
-    if (d < minDist){
-      // Push apart
-      const overlap = (minDist - d) / 2;
-      const nx = dx / d, ny = dy / d;
-      a.x -= nx * overlap;
-      a.y -= ny * overlap;
-      b.x += nx * overlap;
-      b.y += ny * overlap;
+    // Push apart
+    const overlap = (minDist - d) / 2;
+    const nx = dx / d, ny = dy / d;
+    a.x -= nx * overlap;
+    a.y -= ny * overlap;
+    b.x += nx * overlap;
+    b.y += ny * overlap;
 
-      // Swap velocity components along the normal
-      const avn = a.vx*nx + a.vy*ny;
-      const bvn = b.vx*nx + b.vy*ny;
-      const diff = bvn - avn;
-      a.vx += diff*nx; a.vy += diff*ny;
-      b.vx -= diff*nx; b.vy -= diff*ny;
+    // Velocity exchange along collision normal
+    const avn = a.vx*nx + a.vy*ny;
+    const bvn = b.vx*nx + b.vy*ny;
+    const diff = bvn - avn;
+    a.vx += diff*nx; a.vy += diff*ny;
+    b.vx -= diff*nx; b.vy -= diff*ny;
 
-      // Damping & energy loss from the hit
-      a.vx *= COLLISION_DAMP; a.vy *= COLLISION_DAMP;
-      b.vx *= COLLISION_DAMP; b.vy *= COLLISION_DAMP;
-      a.energy = Math.max(0, a.energy - 0.015);
-      b.energy = Math.max(0, b.energy - 0.015);
+    // Damping & energy loss from the hit (more dramatic)
+    a.vx *= COLLISION_DAMP; a.vy *= COLLISION_DAMP;
+    b.vx *= COLLISION_DAMP; b.vy *= COLLISION_DAMP;
+    a.energy = Math.max(0, a.energy - 0.025);
+    b.energy = Math.max(0, b.energy - 0.025);
+
+    // Sparks!
+    makeSparks((a.x+b.x)/2, (a.y+b.y)/2, nx, ny);
+  }
+
+  function makeSparks(x, y, nx, ny){
+    for (let i=0;i<8;i++){
+      const ang = Math.atan2(ny, nx) + (Math.random()-0.5)*1.6;
+      const spd = 2 + Math.random()*2.5;
+      sparks.push({ x, y, vx: Math.cos(ang)*spd, vy: Math.sin(ang)*spd, life: 20 });
+    }
+  }
+
+  function drawSparks(){
+    for (let i=sparks.length-1; i>=0; i--){
+      const s = sparks[i];
+      s.x += s.vx; s.y += s.vy;
+      s.vx *= 0.95; s.vy *= 0.95;
+      s.life--;
+      ctx.globalAlpha = Math.max(0, s.life/20);
+      ctx.fillStyle = "#f5b300";
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, 2, 0, Math.PI*2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      if (s.life <= 0) sparks.splice(i,1);
     }
   }
 
@@ -260,30 +307,24 @@
   }
 
   function checkRoundEnd(){
-    // A bey is "out" if: not alive OR energy basically at zero
-    const p1Out = !p1.alive || p1.energy <= 0.005;
-    const p2Out = !p2.alive || p2.energy <= 0.005;
+    const p1Out = !p1.alive || p1.energy <= 0.004;
+    const p2Out = !p2.alive || p2.energy <= 0.004;
 
     if (p1Out && p2Out) {
       announce("Draw! Both Beys stopped or went out.");
-      roundOver = true;
-      setLaunchEnabled(false);
+      roundOver = true; setLaunchEnabled(false);
       return "draw";
     }
     if (p1Out) {
-      scores.p2++;
-      updateScore();
+      scores.p2++; updateScore();
       announce("P2 wins the round!");
-      roundOver = true;
-      setLaunchEnabled(false);
+      roundOver = true; setLaunchEnabled(false);
       return "p2";
     }
     if (p2Out) {
-      scores.p1++;
-      updateScore();
+      scores.p1++; updateScore();
       announce("P1 wins the round!");
-      roundOver = true;
-      setLaunchEnabled(false);
+      roundOver = true; setLaunchEnabled(false);
       return "p1";
     }
     return null;
@@ -292,76 +333,59 @@
   function updateScore(){
     p1ScoreEl.textContent = scores.p1;
     p2ScoreEl.textContent = scores.p2;
-    // Match winner?
     if (scores.p1 >= targetWins || scores.p2 >= targetWins){
       const winner = scores.p1 > scores.p2 ? "P1" : "P2";
-      setTimeout(()=> alert(`${winner} wins the match!`), 50);
+      setTimeout(()=> alert(`${winner} wins the match!`), 60);
     }
   }
 
-  function announce(msg){
-    // Lightweight inline toast
-    console.info(msg);
-  }
+  function announce(msg){ console.info(msg); }
 
   function loop(){
     drawArena();
 
-    // Updates
     p1.update();
     p2.update();
 
-    // Collisions
     handleCollision(p1, p2);
 
-    // Draw
     p1.draw();
     p2.draw();
 
+    drawSparks();
+
     if (!roundOver){
       const end = checkRoundEnd();
-      if (end){
-        // stop here; wait for Rematch
-        cancelAnimationFrame(raf);
-        return;
-      }
+      if (end){ cancelAnimationFrame(raf); return; }
     }
 
     raf = requestAnimationFrame(loop);
   }
 
-  function drawOnce(){
-    drawArena(); p1.draw(); p2.draw();
-  }
+  function drawOnce(){ drawArena(); p1.draw(); p2.draw(); }
 
-  // Bot logic for P2: auto-pick a power and launch a moment after P1
+  // Bot logic for P2
   function maybeBotLaunch(){
     if (!botToggle.checked) return;
-    // Slight delay for drama
     setTimeout(()=>{
-      const botPower = 50 + Math.round(Math.random()*40); // 50–90
+      const botPower = 55 + Math.round(Math.random()*40); // 55–95
       p2Power.value = botPower;
       p2PowerLbl.textContent = botPower;
       launchP2();
-    }, 500 + Math.random()*600);
+    }, 450 + Math.random()*600);
   }
 
-  // Launch handlers
   function launchP1(){
-    if (p1.energy > 0.01) return; // already launched
+    if (p1.energy > 0.01) return;
     p1.launch(+p1Power.value);
-    p1LaunchBtn.disabled = true;
-    p1Power.disabled = true;
-    // If both launched, start loop
-    if (p2.energy > 0.01) startRound();
-    else maybeBotLaunch();
+    p1LaunchBtn.disabled = true; p1Power.disabled = true;
+    if (p2.energy > 0.01) startRound(); else maybeBotLaunch();
   }
 
   function launchP2(){
     if (p2.energy > 0.01) return;
     p2.launch(+p2Power.value);
-    p2LaunchBtn.disabled = true;
-    p2Power.disabled = true;
+    p2LaunchBtn.disabled = true; p2Power.disabled = true;
     if (p1.energy > 0.01) startRound();
   }
 
@@ -377,25 +401,14 @@
   p1LaunchBtn.addEventListener('click', launchP1);
   p2LaunchBtn.addEventListener('click', launchP2);
 
-  rematchBtn.addEventListener('click', ()=> {
-    resetRound();
-    // preserve scores
-  });
-
+  rematchBtn.addEventListener('click', ()=> { resetRound(); });
   resetAllBtn.addEventListener('click', ()=> {
-    scores = { p1: 0, p2: 0 };
-    updateScore();
-    resetRound();
+    scores = { p1: 0, p2: 0 }; updateScore(); resetRound();
   });
-
   bestOfBtn.addEventListener('click', ()=> {
-    targetWins = 3; // best of 5 = first to 3
-    targetWinsEl.textContent = targetWins;
-    scores = { p1: 0, p2: 0 };
-    updateScore();
-    resetRound();
+    targetWins = 3; targetWinsEl.textContent = targetWins;
+    scores = { p1: 0, p2: 0 }; updateScore(); resetRound();
   });
-
   botToggle.addEventListener('change', ()=>{
     p2LaunchBtn.disabled = botToggle.checked;
     p2Power.disabled = botToggle.checked;
