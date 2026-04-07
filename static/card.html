@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Card Price Lookup</title>
+  <link rel="stylesheet" href="/static/card.css" />
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>Card Price Lookup</h1>
+      <p class="subtitle">Pokémon &amp; Sports Cards</p>
+    </header>
+
+    <!-- Upload Zone -->
+    <section class="upload-section" id="uploadSection">
+      <div class="drop-zone" id="dropZone">
+        <div class="drop-icon">&#128247;</div>
+        <p class="drop-label">Drop a card image here</p>
+        <p class="drop-hint">or</p>
+        <div class="upload-buttons">
+          <label class="btn btn-primary" for="fileInput">Choose File</label>
+          <label class="btn btn-secondary" for="cameraInput">&#128247; Camera</label>
+        </div>
+        <input type="file" id="fileInput" accept="image/*" hidden />
+        <input type="file" id="cameraInput" accept="image/*" capture="environment" hidden />
+      </div>
+      <div class="preview-wrap" id="previewWrap" hidden>
+        <img id="previewImg" alt="Card preview" />
+        <button class="btn btn-ghost" id="clearBtn">&#x2715; Clear</button>
+      </div>
+      <button class="btn btn-action" id="identifyBtn" disabled>
+        Identify Card &amp; Get Prices
+      </button>
+    </section>
+
+    <!-- Status -->
+    <section class="status-section" id="statusSection" hidden>
+      <div class="spinner" id="spinner"></div>
+      <p class="status-msg" id="statusMsg"></p>
+    </section>
+
+    <!-- Error -->
+    <section class="error-section" id="errorSection" hidden>
+      <div class="error-box">
+        <span class="error-icon">&#9888;</span>
+        <p id="errorMsg"></p>
+        <button class="btn btn-ghost" id="retryBtn">Try Again</button>
+      </div>
+    </section>
+
+    <!-- Results -->
+    <section class="results-section" id="resultsSection" hidden>
+      <div class="card-identity">
+        <div class="card-image-wrap">
+          <img id="cardImg" alt="Card" hidden />
+          <div class="card-image-placeholder" id="cardImgPlaceholder">&#127183;</div>
+        </div>
+        <div class="card-details">
+          <h2 id="cardName"></h2>
+          <p id="cardMeta"></p>
+          <p id="cardVariant" class="variant-badge"></p>
+        </div>
+      </div>
+
+      <!-- Price boxes -->
+      <div class="price-grid" id="priceGrid">
+        <div class="price-box low">
+          <div class="price-label">LOW</div>
+          <div class="price-value" id="priceLow">—</div>
+        </div>
+        <div class="price-box avg">
+          <div class="price-label">AVG</div>
+          <div class="price-value" id="priceAvg">—</div>
+        </div>
+        <div class="price-box high">
+          <div class="price-label">HIGH</div>
+          <div class="price-value" id="priceHigh">—</div>
+        </div>
+      </div>
+      <p class="price-source" id="priceSource"></p>
+
+      <!-- Cardmarket (Pokémon EU prices) -->
+      <div id="cardmarketSection" hidden>
+        <h3 class="section-label">Cardmarket (EU)</h3>
+        <div class="price-grid small">
+          <div class="price-box low">
+            <div class="price-label">LOW</div>
+            <div class="price-value" id="cmLow">—</div>
+          </div>
+          <div class="price-box avg">
+            <div class="price-label">AVG</div>
+            <div class="price-value" id="cmAvg">—</div>
+          </div>
+          <div class="price-box high">
+            <div class="price-label">TREND</div>
+            <div class="price-value" id="cmHigh">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- No prices fallback -->
+      <div class="no-prices" id="noPricesMsg" hidden>
+        <p>Prices not found in database. Search manually:</p>
+      </div>
+
+      <!-- Links -->
+      <div class="links" id="linksSection"></div>
+
+      <button class="btn btn-ghost lookup-again" id="lookupAgainBtn">Look Up Another Card</button>
+    </section>
+  </div>
+
+  <script src="/static/card.js"></script>
+</body>
+</html>
