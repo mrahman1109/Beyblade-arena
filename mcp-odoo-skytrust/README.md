@@ -1,8 +1,14 @@
-# MCP Server — Odoo Online ↔ Skytrust
+# Odoo Online ↔ Skytrust Integration
 
-An MCP server that lets Claude read and write data across **Odoo Online** and
-**Skytrust** — covering employees, projects/tasks, timesheets, attendance, and
-WHS incidents.
+Three components in one project:
+
+| Component | What it does |
+|-----------|-------------|
+| **MCP server** (`server.py`) | Lets Claude query/write both apps on demand |
+| **Webhook server** (`webhook_server.py`) | Receives Odoo events and pushes changes to Skytrust **instantly** |
+| **Scheduler** (`scheduler.py`) | Runs periodic syncs (every 5–60 min) as a safety net |
+
+Run all three together with `python run.py`.
 
 ---
 
@@ -76,7 +82,62 @@ Restart Claude Desktop after saving.
 
 ---
 
-## Available Tools (20 total)
+## Step 5 — Start the Live Sync Service
+
+```bash
+source .venv/bin/activate
+python run.py                        # default: port 8000
+python run.py --host 0.0.0.0 --port 9000   # custom port
+```
+
+This starts:
+- **Webhook server** at `http://your-server:8000/webhooks/odoo/*`
+- **Scheduler** running 4 background sync jobs
+
+### Exposing the webhook server to Odoo
+
+Odoo Online needs to reach your server over the internet. Options:
+- Deploy on a VPS / cloud VM (recommended for production)
+- Use [ngrok](https://ngrok.com) for local testing: `ngrok http 8000`
+
+### Configuring Odoo to send webhooks
+
+**Odoo 16+ (native webhooks):**
+1. Settings → Technical → Webhooks → New
+2. Set Model, Trigger (on create / on write), URL, and Secret header
+
+**Older Odoo (Automated Actions):**
+1. Settings → Technical → Automation → Automated Actions → New
+2. Model: `HR Employee`, Trigger: On record creation/update
+3. Action: "Call a REST Service" → URL = `http://your-server:8000/webhooks/odoo/employee`
+4. Add header `X-Odoo-Webhook-Secret: <your WEBHOOK_SECRET>`
+
+Repeat for `account.analytic.line` (timesheets) and `hr.attendance`.
+
+### Webhook endpoints
+
+| Endpoint | Triggered by |
+|----------|-------------|
+| `POST /webhooks/odoo/employee` | Employee created or updated |
+| `POST /webhooks/odoo/timesheet` | Timesheet entry created |
+| `POST /webhooks/odoo/attendance` | Attendance check-in/out |
+| `POST /webhooks/odoo/task` | Task created or updated |
+| `GET  /health` | Health check |
+
+### Scheduler jobs (background, automatic)
+
+| Job | Interval | Direction |
+|-----|----------|-----------|
+| Timesheet sync | Every 5 min | Odoo → Skytrust |
+| Attendance sync | Every 15 min | Odoo → Skytrust |
+| Full employee reconciliation | Every 60 min | Odoo → Skytrust |
+| Incident sync | Every 60 min | Skytrust → Odoo tasks |
+
+Intervals are configurable via `.env` (see `.env.example`).
+
+---
+
+## Available MCP Tools (20 total)
 
 | Tool | Description |
 |------|-------------|
