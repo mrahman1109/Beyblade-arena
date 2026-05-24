@@ -1,5 +1,7 @@
 node_modules/
 client/dist/
 server/strategy.db
+server/strategy.db-shm
+server/strategy.db-wal
 .env
 .env.local
