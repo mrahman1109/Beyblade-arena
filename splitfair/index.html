@@ -1,0 +1,740 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SplitFair — free expense splitter</title>
+<style>
+  :root {
+    --green: #1cc29f;
+    --green-dark: #14a688;
+    --red: #e0533d;
+    --ink: #1f2937;
+    --muted: #6b7280;
+    --bg: #f4f7f6;
+    --card: #ffffff;
+    --border: #e6e9ec;
+    --maxw: 880px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    min-height: 100vh;
+  }
+  .wrap { width: min(var(--maxw), 94vw); margin: 0 auto; padding: 20px 0 60px; }
+
+  header.top {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    flex-wrap: wrap; margin-bottom: 18px;
+  }
+  header.top h1 { font-size: clamp(20px, 4vw, 26px); margin: 0; display:flex; align-items:center; gap:8px; }
+  header.top .tag { font-size: 12px; color: var(--muted); font-weight: 500; }
+
+  .group-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  select, input[type="text"], input[type="number"], input[type="date"] {
+    font-size: 14px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px;
+    background: #fff; color: var(--ink);
+  }
+  button {
+    font-size: 14px; padding: 8px 14px; border: 1px solid var(--border); background: #fff;
+    border-radius: 8px; cursor: pointer; color: var(--ink);
+  }
+  button:hover { border-color: #cfd6da; }
+  button.primary { background: var(--green); border-color: var(--green); color: #fff; font-weight: 600; }
+  button.primary:hover { background: var(--green-dark); border-color: var(--green-dark); }
+  button.danger { color: var(--red); }
+  button.ghost { border-color: transparent; background: transparent; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+    padding: 16px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.04);
+  }
+  .card h2 { margin: 0 0 12px; font-size: 16px; }
+  .card h2 .muted { font-weight: 400; color: var(--muted); font-size: 13px; }
+
+  .empty { text-align: center; color: var(--muted); padding: 40px 20px; }
+  .empty h2 { color: var(--ink); }
+
+  /* Members */
+  .members-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+  .chip {
+    display: flex; align-items: center; gap: 6px; background: #f0f2f1; border-radius: 999px;
+    padding: 5px 6px 5px 5px; font-size: 13px;
+  }
+  .avatar {
+    width: 24px; height: 24px; border-radius: 50%; background: var(--green); color: #fff;
+    display: grid; place-items: center; font-size: 11px; font-weight: 700; flex: none;
+  }
+  .chip button { padding: 0 4px; border: none; background: none; color: var(--muted); font-size: 14px; line-height:1; }
+  .add-inline { display: flex; gap: 6px; }
+  .add-inline input { flex: 1; min-width: 120px; }
+
+  /* Balances */
+  .balance-list { display: flex; flex-direction: column; gap: 8px; }
+  .balance-row { display: flex; justify-content: space-between; align-items: center; font-size: 14px; }
+  .balance-row .amt.pos { color: var(--green-dark); font-weight: 700; }
+  .balance-row .amt.neg { color: var(--red); font-weight: 700; }
+  .balance-row .amt.zero { color: var(--muted); }
+
+  .settle-list { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+  .settle-row {
+    display: flex; justify-content: space-between; align-items: center; font-size: 14px;
+    background: #f8faf9; border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px;
+  }
+  .settle-row span b { color: var(--ink); }
+  .all-settled { color: var(--muted); font-size: 14px; }
+
+  /* Expense form */
+  form.expense-form { display: grid; gap: 10px; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .split-type { display: flex; gap: 14px; font-size: 13px; align-items: center; }
+  .split-type label { display: flex; gap: 4px; align-items: center; cursor: pointer; }
+  .share-rows { display: flex; flex-direction: column; gap: 6px; border-top: 1px dashed var(--border); padding-top: 10px; }
+  .share-row { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  .share-row label { flex: 1; display: flex; align-items: center; gap: 6px; }
+  .share-row input[type="number"] { width: 90px; }
+  .share-total { font-size: 12px; color: var(--muted); }
+  .share-total.bad { color: var(--red); font-weight: 600; }
+  .form-actions { display: flex; justify-content: flex-end; gap: 8px; }
+  .error-msg { color: var(--red); font-size: 13px; }
+
+  /* Activity */
+  .activity-list { display: flex; flex-direction: column; gap: 0; }
+  .activity-item {
+    display: flex; justify-content: space-between; align-items: center; gap: 10px;
+    padding: 10px 0; border-bottom: 1px solid var(--border);
+  }
+  .activity-item:last-child { border-bottom: none; }
+  .activity-item .desc { font-weight: 600; font-size: 14px; }
+  .activity-item .meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .activity-item .amt { font-weight: 700; white-space: nowrap; }
+  .activity-item .row-actions { display: flex; align-items: center; gap: 8px; }
+
+  .footer { text-align: center; font-size: 12px; color: var(--muted); margin-top: 24px; }
+  .footer a { color: var(--muted); }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="top">
+      <h1>🟢 SplitFair <span class="tag">— free, local, yours</span></h1>
+      <div class="group-bar">
+        <select id="groupSelect" aria-label="Select group"></select>
+        <button id="newGroupBtn">+ New group</button>
+        <button id="renameGroupBtn" class="ghost" title="Rename group">✎</button>
+        <button id="deleteGroupBtn" class="ghost danger" title="Delete group">🗑</button>
+      </div>
+    </header>
+
+    <div id="app"></div>
+
+    <div class="footer">
+      Data is stored only in this browser (localStorage) — nothing is sent anywhere.
+      <br />Export a backup from time to time with the “Export” button below the activity list.
+    </div>
+  </div>
+
+<script>
+(() => {
+  const STORAGE_KEY = 'splitfair.v1';
+
+  // ---------- state ----------
+  function uid(prefix){ return prefix + '_' + Math.random().toString(36).slice(2, 9); }
+
+  function loadState(){
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch (e) { console.warn('Could not read saved data', e); }
+    return { groups: [], activeGroupId: null };
+  }
+
+  function saveState(){
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }
+
+  let state = loadState();
+
+  function activeGroup(){
+    return state.groups.find(g => g.id === state.activeGroupId) || null;
+  }
+
+  function createGroup(name){
+    const g = { id: uid('grp'), name, members: [], expenses: [] };
+    state.groups.push(g);
+    state.activeGroupId = g.id;
+    saveState();
+    return g;
+  }
+
+  // ---------- money helpers ----------
+  function money(n){
+    const v = Math.round((n + Number.EPSILON) * 100) / 100;
+    return (v < 0 ? '-$' : '$') + Math.abs(v).toFixed(2);
+  }
+  function initials(name){
+    return name.trim().split(/\s+/).map(w => w[0]).slice(0,2).join('').toUpperCase() || '?';
+  }
+
+  // ---------- balances ----------
+  function computeBalances(group){
+    const balances = {};
+    group.members.forEach(m => balances[m.id] = 0);
+    for (const e of group.expenses){
+      if (e.type === 'expense'){
+        balances[e.paidBy] = (balances[e.paidBy] || 0) + e.amount;
+        for (const [memberId, share] of Object.entries(e.shares)){
+          balances[memberId] = (balances[memberId] || 0) - share;
+        }
+      } else if (e.type === 'settlement'){
+        balances[e.from] = (balances[e.from] || 0) + e.amount;
+        balances[e.to] = (balances[e.to] || 0) - e.amount;
+      }
+    }
+    return balances;
+  }
+
+  function simplifyDebts(balances){
+    const EPS = 0.005;
+    const creditors = [];
+    const debtors = [];
+    for (const [id, bal] of Object.entries(balances)){
+      if (bal > EPS) creditors.push({ id, amount: bal });
+      else if (bal < -EPS) debtors.push({ id, amount: -bal });
+    }
+    creditors.sort((a,b) => b.amount - a.amount);
+    debtors.sort((a,b) => b.amount - a.amount);
+
+    const settlements = [];
+    let ci = 0, di = 0;
+    while (ci < creditors.length && di < debtors.length){
+      const c = creditors[ci], d = debtors[di];
+      const amt = Math.min(c.amount, d.amount);
+      if (amt > EPS) settlements.push({ from: d.id, to: c.id, amount: amt });
+      c.amount -= amt; d.amount -= amt;
+      if (c.amount <= EPS) ci++;
+      if (d.amount <= EPS) di++;
+    }
+    return settlements;
+  }
+
+  // ---------- rendering ----------
+  const app = document.getElementById('app');
+  const groupSelect = document.getElementById('groupSelect');
+  const newGroupBtn = document.getElementById('newGroupBtn');
+  const renameGroupBtn = document.getElementById('renameGroupBtn');
+  const deleteGroupBtn = document.getElementById('deleteGroupBtn');
+
+  // form UI state (not persisted)
+  let splitType = 'equal';
+  let selectedMembers = new Set();
+  let formError = '';
+
+  function memberName(group, id){
+    const m = group.members.find(x => x.id === id);
+    return m ? m.name : '(removed)';
+  }
+
+  function renderGroupSelect(){
+    groupSelect.innerHTML = '';
+    if (state.groups.length === 0){
+      const opt = document.createElement('option');
+      opt.textContent = 'No groups yet';
+      groupSelect.appendChild(opt);
+      groupSelect.disabled = true;
+    } else {
+      groupSelect.disabled = false;
+      for (const g of state.groups){
+        const opt = document.createElement('option');
+        opt.value = g.id;
+        opt.textContent = g.name;
+        if (g.id === state.activeGroupId) opt.selected = true;
+        groupSelect.appendChild(opt);
+      }
+    }
+    const hasGroups = state.groups.length > 0;
+    renameGroupBtn.disabled = !hasGroups;
+    deleteGroupBtn.disabled = !hasGroups;
+  }
+
+  function render(){
+    renderGroupSelect();
+    const group = activeGroup();
+    if (!group){
+      app.innerHTML = '';
+      const card = document.createElement('div');
+      card.className = 'card empty';
+      card.innerHTML = `
+        <h2>Welcome to SplitFair 👋</h2>
+        <p>Create a group (roommates, a trip, a couple) to start tracking who paid for what and who owes whom.</p>
+        <button class="primary" id="firstGroupBtn">Create your first group</button>
+      `;
+      app.appendChild(card);
+      card.querySelector('#firstGroupBtn').addEventListener('click', onNewGroup);
+      return;
+    }
+
+    // reset selection defaults when switching groups/members change
+    if (selectedMembers.size === 0 && group.members.length){
+      group.members.forEach(m => selectedMembers.add(m.id));
+    }
+    // drop selections for members that no longer exist
+    for (const id of Array.from(selectedMembers)){
+      if (!group.members.some(m => m.id === id)) selectedMembers.delete(id);
+    }
+
+    const balances = computeBalances(group);
+    const settlements = simplifyDebts(balances);
+
+    app.innerHTML = '';
+    app.appendChild(renderMembersCard(group));
+    app.appendChild(renderBalancesCard(group, balances, settlements));
+    app.appendChild(renderExpenseFormCard(group));
+    app.appendChild(renderActivityCard(group));
+  }
+
+  // ---------- members card ----------
+  function renderMembersCard(group){
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = `<h2>Members <span class="muted">${group.members.length}</span></h2>`;
+
+    const row = document.createElement('div');
+    row.className = 'members-row';
+    if (group.members.length === 0){
+      row.innerHTML = '<span class="muted" style="font-size:13px">Add the people splitting expenses in this group.</span>';
+    }
+    for (const m of group.members){
+      const chip = document.createElement('div');
+      chip.className = 'chip';
+      const usedInExpense = group.expenses.some(e =>
+        e.type === 'expense' ? (e.paidBy === m.id || m.id in e.shares) : (e.from === m.id || e.to === m.id)
+      );
+      chip.innerHTML = `<span class="avatar">${initials(m.name)}</span>${escapeHtml(m.name)}`;
+      const rm = document.createElement('button');
+      rm.textContent = '×';
+      rm.title = usedInExpense ? 'Remove from group (their history is kept)' : 'Remove member';
+      rm.addEventListener('click', () => {
+        if (!confirm(`Remove ${m.name} from this group?` + (usedInExpense ? ' Their past expenses stay on record.' : ''))) return;
+        group.members = group.members.filter(x => x.id !== m.id);
+        selectedMembers.delete(m.id);
+        saveState(); render();
+      });
+      chip.appendChild(rm);
+      row.appendChild(chip);
+    }
+    card.appendChild(row);
+
+    const addRow = document.createElement('div');
+    addRow.className = 'add-inline';
+    addRow.innerHTML = `<input type="text" id="newMemberInput" placeholder="Add a member's name" />
+      <button class="primary" id="addMemberBtn">Add</button>`;
+    card.appendChild(addRow);
+
+    const doAdd = () => {
+      const input = card.querySelector('#newMemberInput');
+      const name = input.value.trim();
+      if (!name) return;
+      const m = { id: uid('mem'), name };
+      group.members.push(m);
+      selectedMembers.add(m.id);
+      saveState(); render();
+    };
+    card.querySelector('#addMemberBtn').addEventListener('click', doAdd);
+    card.querySelector('#newMemberInput').addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventDefault(); doAdd(); }});
+
+    return card;
+  }
+
+  // ---------- balances card ----------
+  function renderBalancesCard(group, balances, settlements){
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = '<h2>Balances</h2>';
+
+    if (group.members.length === 0){
+      card.innerHTML += '<p class="muted" style="font-size:13px">Add members to see balances.</p>';
+      return card;
+    }
+
+    const list = document.createElement('div');
+    list.className = 'balance-list';
+    for (const m of group.members){
+      const bal = balances[m.id] || 0;
+      const cls = bal > 0.005 ? 'pos' : bal < -0.005 ? 'neg' : 'zero';
+      const label = bal > 0.005 ? 'is owed' : bal < -0.005 ? 'owes' : 'is settled up';
+      const row = document.createElement('div');
+      row.className = 'balance-row';
+      row.innerHTML = `<span>${escapeHtml(m.name)} <span class="muted" style="font-size:12px">${label}</span></span>
+        <span class="amt ${cls}">${money(Math.abs(bal))}</span>`;
+      list.appendChild(row);
+    }
+    card.appendChild(list);
+
+    const settleWrap = document.createElement('div');
+    settleWrap.className = 'settle-list';
+    if (settlements.length === 0){
+      settleWrap.innerHTML = '<div class="all-settled">✅ Everyone is settled up.</div>';
+    } else {
+      settleWrap.innerHTML = '<div class="muted" style="font-size:12px;margin-bottom:2px">Suggested settle-up (fewest payments):</div>';
+      for (const s of settlements){
+        const row = document.createElement('div');
+        row.className = 'settle-row';
+        row.innerHTML = `<span><b>${escapeHtml(memberName(group,s.from))}</b> pays <b>${escapeHtml(memberName(group,s.to))}</b> ${money(s.amount)}</span>`;
+        const btn = document.createElement('button');
+        btn.textContent = 'Mark as paid';
+        btn.addEventListener('click', () => {
+          group.expenses.push({
+            id: uid('exp'), type: 'settlement', from: s.from, to: s.to,
+            amount: Math.round(s.amount * 100) / 100, date: todayISO()
+          });
+          saveState(); render();
+        });
+        row.appendChild(btn);
+        settleWrap.appendChild(row);
+      }
+    }
+    card.appendChild(settleWrap);
+
+    return card;
+  }
+
+  // ---------- expense form card ----------
+  function renderExpenseFormCard(group){
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = '<h2>Add an expense</h2>';
+
+    if (group.members.length < 2){
+      card.innerHTML += '<p class="muted" style="font-size:13px">Add at least two members before logging an expense.</p>';
+      return card;
+    }
+
+    const form = document.createElement('form');
+    form.className = 'expense-form';
+
+    form.innerHTML = `
+      <div class="grid-2">
+        <input type="text" id="descInput" placeholder="What was it for? (e.g. Groceries)" required />
+        <input type="number" id="amountInput" placeholder="Total amount" step="0.01" min="0.01" required />
+      </div>
+      <div class="grid-2">
+        <select id="paidBySelect"></select>
+        <input type="date" id="dateInput" />
+      </div>
+      <div class="split-type">
+        <span class="muted">Split:</span>
+        <label><input type="radio" name="splitType" value="equal" ${splitType==='equal'?'checked':''}/> Equally</label>
+        <label><input type="radio" name="splitType" value="exact" ${splitType==='exact'?'checked':''}/> Exact amounts</label>
+        <label><input type="radio" name="splitType" value="percent" ${splitType==='percent'?'checked':''}/> Percentages</label>
+      </div>
+      <div class="share-rows" id="shareRows"></div>
+      <div class="share-total" id="shareTotal"></div>
+      <div class="error-msg" id="formErrorMsg"></div>
+      <div class="form-actions"><button type="submit" class="primary">Add expense</button></div>
+    `;
+
+    const paidBySelect = form.querySelector('#paidBySelect');
+    for (const m of group.members){
+      const opt = document.createElement('option');
+      opt.value = m.id; opt.textContent = m.name;
+      paidBySelect.appendChild(opt);
+    }
+    form.querySelector('#dateInput').value = todayISO();
+
+    function renderShareRows(){
+      const wrap = form.querySelector('#shareRows');
+      wrap.innerHTML = '';
+      const amount = parseFloat(form.querySelector('#amountInput').value) || 0;
+      const n = selectedMembers.size || 1;
+      const selectedIds = group.members.filter(m => selectedMembers.has(m.id)).map(m => m.id);
+      let exactAssigned = 0, pctAssigned = 0;
+      for (const m of group.members){
+        const row = document.createElement('div');
+        row.className = 'share-row';
+        const checked = selectedMembers.has(m.id);
+        const isLastSelected = checked && selectedIds[selectedIds.length - 1] === m.id;
+        let valueField = '';
+        if (splitType === 'exact'){
+          const dflt = checked ? (isLastSelected ? Math.round((amount - exactAssigned) * 100) / 100 : Math.round((amount / n) * 100) / 100) : 0;
+          if (checked) exactAssigned += dflt;
+          valueField = `<input type="number" step="0.01" min="0" class="shareInput" data-member="${m.id}" value="${checked ? dflt.toFixed(2) : ''}" placeholder="0.00" ${checked?'':'disabled'} />`;
+        } else if (splitType === 'percent'){
+          const dflt = checked ? (isLastSelected ? Math.round((100 - pctAssigned) * 10) / 10 : Math.round((100 / n) * 10) / 10) : 0;
+          if (checked) pctAssigned += dflt;
+          valueField = `<input type="number" step="0.1" min="0" max="100" class="shareInput" data-member="${m.id}" value="${checked ? dflt.toFixed(1) : ''}" placeholder="0" ${checked?'':'disabled'} />`;
+        }
+        row.innerHTML = `
+          <label><input type="checkbox" class="memberCheck" data-member="${m.id}" ${checked?'checked':''}/> ${escapeHtml(m.name)}</label>
+          ${valueField}
+        `;
+        wrap.appendChild(row);
+      }
+      wrap.querySelectorAll('.memberCheck').forEach(cb => {
+        cb.addEventListener('change', () => {
+          const id = cb.dataset.member;
+          if (cb.checked) selectedMembers.add(id); else selectedMembers.delete(id);
+          renderShareRows();
+        });
+      });
+      wrap.querySelectorAll('.shareInput').forEach(inp => {
+        inp.addEventListener('input', updateShareTotal);
+      });
+      updateShareTotal();
+    }
+
+    function updateShareTotal(){
+      const totalEl = form.querySelector('#shareTotal');
+      const amount = parseFloat(form.querySelector('#amountInput').value) || 0;
+      if (splitType === 'equal'){
+        totalEl.textContent = selectedMembers.size
+          ? `Splitting ${money(amount)} equally across ${selectedMembers.size} people (${money(amount / selectedMembers.size)} each).`
+          : 'Select at least one person to split with.';
+        totalEl.classList.remove('bad');
+        return;
+      }
+      const inputs = Array.from(form.querySelectorAll('.shareInput:not(:disabled)'));
+      const sum = inputs.reduce((s, i) => s + (parseFloat(i.value) || 0), 0);
+      if (splitType === 'exact'){
+        const diff = Math.round((sum - amount) * 100) / 100;
+        totalEl.textContent = `Entered ${money(sum)} of ${money(amount)}${diff !== 0 ? ` (${diff > 0 ? 'over' : 'under'} by ${money(Math.abs(diff))})` : ' ✓'}`;
+        totalEl.classList.toggle('bad', diff !== 0);
+      } else {
+        const diff = Math.round((sum - 100) * 10) / 10;
+        totalEl.textContent = `Entered ${sum.toFixed(1)}% of 100%${diff !== 0 ? ` (${diff > 0 ? 'over' : 'under'} by ${Math.abs(diff).toFixed(1)}%)` : ' ✓'}`;
+        totalEl.classList.toggle('bad', diff !== 0);
+      }
+    }
+
+    form.querySelectorAll('input[name="splitType"]').forEach(r => {
+      r.addEventListener('change', () => { splitType = r.value; renderShareRows(); });
+    });
+    form.querySelector('#amountInput').addEventListener('input', renderShareRows);
+
+    renderShareRows();
+
+    form.addEventListener('submit', e => {
+      e.preventDefault();
+      const errEl = form.querySelector('#formErrorMsg');
+      errEl.textContent = '';
+
+      const description = form.querySelector('#descInput').value.trim();
+      const amount = parseFloat(form.querySelector('#amountInput').value);
+      const paidBy = paidBySelect.value;
+      const date = form.querySelector('#dateInput').value || todayISO();
+
+      if (!description || !amount || amount <= 0){
+        errEl.textContent = 'Enter a description and an amount greater than zero.';
+        return;
+      }
+      if (selectedMembers.size === 0){
+        errEl.textContent = 'Select at least one person to split with.';
+        return;
+      }
+
+      const shares = {};
+      if (splitType === 'equal'){
+        const each = Math.round((amount / selectedMembers.size) * 100) / 100;
+        let assigned = 0;
+        const ids = Array.from(selectedMembers);
+        ids.forEach((id, i) => {
+          const isLast = i === ids.length - 1;
+          shares[id] = isLast ? Math.round((amount - assigned) * 100) / 100 : each;
+          assigned += shares[id];
+        });
+      } else if (splitType === 'exact'){
+        let sum = 0;
+        form.querySelectorAll('.shareInput:not(:disabled)').forEach(inp => {
+          const v = parseFloat(inp.value) || 0;
+          shares[inp.dataset.member] = v;
+          sum += v;
+        });
+        if (Math.abs(sum - amount) > 0.01){
+          errEl.textContent = `Exact amounts must add up to ${money(amount)} (currently ${money(sum)}).`;
+          return;
+        }
+      } else if (splitType === 'percent'){
+        let sumPct = 0;
+        const pctByMember = {};
+        form.querySelectorAll('.shareInput:not(:disabled)').forEach(inp => {
+          const v = parseFloat(inp.value) || 0;
+          pctByMember[inp.dataset.member] = v;
+          sumPct += v;
+        });
+        if (Math.abs(sumPct - 100) > 0.1){
+          errEl.textContent = `Percentages must add up to 100% (currently ${sumPct.toFixed(1)}%).`;
+          return;
+        }
+        for (const [id, pct] of Object.entries(pctByMember)){
+          shares[id] = Math.round(amount * pct / 100 * 100) / 100;
+        }
+      }
+
+      group.expenses.push({
+        id: uid('exp'), type: 'expense', description, amount,
+        paidBy, splitType, shares, date
+      });
+      saveState();
+      form.reset();
+      render();
+    });
+
+    card.appendChild(form);
+    return card;
+  }
+
+  // ---------- activity card ----------
+  function renderActivityCard(group){
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = '<h2>Activity</h2>';
+
+    const list = document.createElement('div');
+    list.className = 'activity-list';
+
+    const sorted = [...group.expenses].sort((a,b) => (b.date||'').localeCompare(a.date||'') || (b.id > a.id ? 1 : -1));
+    if (sorted.length === 0){
+      list.innerHTML = '<p class="muted" style="font-size:13px">No expenses logged yet.</p>';
+    }
+    for (const e of sorted){
+      const item = document.createElement('div');
+      item.className = 'activity-item';
+      if (e.type === 'expense'){
+        item.innerHTML = `
+          <div>
+            <div class="desc">${escapeHtml(e.description)}</div>
+            <div class="meta">${escapeHtml(memberName(group, e.paidBy))} paid · split ${e.splitType} among ${Object.keys(e.shares).length} · ${e.date || ''}</div>
+          </div>
+          <div class="row-actions">
+            <span class="amt">${money(e.amount)}</span>
+          </div>
+        `;
+      } else {
+        item.innerHTML = `
+          <div>
+            <div class="desc">💸 Settlement</div>
+            <div class="meta">${escapeHtml(memberName(group, e.from))} paid ${escapeHtml(memberName(group, e.to))} · ${e.date || ''}</div>
+          </div>
+          <div class="row-actions">
+            <span class="amt">${money(e.amount)}</span>
+          </div>
+        `;
+      }
+      const delBtn = document.createElement('button');
+      delBtn.className = 'ghost danger';
+      delBtn.textContent = '🗑';
+      delBtn.title = 'Delete';
+      delBtn.addEventListener('click', () => {
+        if (!confirm('Delete this entry?')) return;
+        group.expenses = group.expenses.filter(x => x.id !== e.id);
+        saveState(); render();
+      });
+      item.querySelector('.row-actions').appendChild(delBtn);
+      list.appendChild(item);
+    }
+    card.appendChild(list);
+
+    const actions = document.createElement('div');
+    actions.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;margin-top:12px';
+    actions.innerHTML = `<button id="exportBtn">Export backup</button><button id="importBtn">Import backup</button>
+      <input type="file" id="importFile" accept="application/json" style="display:none" />`;
+    card.appendChild(actions);
+
+    card.querySelector('#exportBtn').addEventListener('click', () => {
+      const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'splitfair-backup.json';
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    });
+    const fileInput = card.querySelector('#importFile');
+    card.querySelector('#importBtn').addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', () => {
+      const file = fileInput.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const parsed = JSON.parse(reader.result);
+          if (!parsed || !Array.isArray(parsed.groups)) throw new Error('Invalid file');
+          if (!confirm('This will replace all current data with the imported backup. Continue?')) return;
+          state = parsed;
+          saveState();
+          render();
+        } catch (err){
+          alert('Could not read that file as a SplitFair backup.');
+        }
+      };
+      reader.readAsText(file);
+      fileInput.value = '';
+    });
+
+    return card;
+  }
+
+  function todayISO(){
+    const d = new Date();
+    return d.toISOString().slice(0,10);
+  }
+
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  // ---------- header actions ----------
+  function onNewGroup(){
+    const name = prompt('Name this group (e.g. "Apartment", "Japan Trip"):');
+    if (!name || !name.trim()) return;
+    createGroup(name.trim());
+    render();
+  }
+
+  groupSelect.addEventListener('change', () => {
+    state.activeGroupId = groupSelect.value;
+    selectedMembers = new Set();
+    saveState(); render();
+  });
+  newGroupBtn.addEventListener('click', onNewGroup);
+  renameGroupBtn.addEventListener('click', () => {
+    const g = activeGroup();
+    if (!g) return;
+    const name = prompt('Rename group:', g.name);
+    if (!name || !name.trim()) return;
+    g.name = name.trim();
+    saveState(); render();
+  });
+  deleteGroupBtn.addEventListener('click', () => {
+    const g = activeGroup();
+    if (!g) return;
+    if (!confirm(`Delete "${g.name}" and all its expenses? This can't be undone.`)) return;
+    state.groups = state.groups.filter(x => x.id !== g.id);
+    state.activeGroupId = state.groups.length ? state.groups[0].id : null;
+    selectedMembers = new Set();
+    saveState(); render();
+  });
+
+  // seed a demo group on first-ever visit so the app isn't blank
+  if (state.groups.length === 0){
+    const g = createGroup('Sample: Roommates');
+    const alex = { id: uid('mem'), name: 'Alex' };
+    const sam = { id: uid('mem'), name: 'Sam' };
+    const jo = { id: uid('mem'), name: 'Jo' };
+    g.members.push(alex, sam, jo);
+    g.expenses.push({
+      id: uid('exp'), type: 'expense', description: 'Groceries', amount: 60,
+      paidBy: alex.id, splitType: 'equal',
+      shares: { [alex.id]: 20, [sam.id]: 20, [jo.id]: 20 }, date: todayISO()
+    });
+    saveState();
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>
